@@ -1,60 +1,80 @@
 import getpass
 import os
 import sys
+from win32com.client import Dispatch
 
+import shutil
 from PyQt5 import QtWidgets
 from PyQt5 import QtCore
+from PyQt5 import QtGui
+
+user_name = getpass.getuser()
+AUTORUN_PATH = r'C:\Users\%s\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup' % user_name
+
+ORGANIZATION_NAME = 'Example App'
+ORGANIZATION_DOMAIN = 'example.com'
+APPLICATION_NAME = 'QSettings program'
+SETTING_MINIMIZE_TO_TRAY = 'settings/minimize'
+SETTING_AUTORUN = 'settings/autorun'
 
 
-def add_to_startup(name_bat, file_path=""):
+def create_shortcut(path):
+    path_to_target = path.rsplit('.', 1)[0] + '.exe'
+    path_to_shortcut = path.rsplit('.', 1)[0] + '.lnk'
+    shell = Dispatch("WScript.Shell")
+    shortcut = shell.CreateShortCut(path_to_shortcut)
+    shortcut.Targetpath = path_to_target
+    shortcut.WorkingDirectory = path.rsplit('\\', 1)[0]
+    shortcut.save()
+
+
+def log_uncaught_exceptions(ex_cls, ex, tb):
+    text = '{}: {}:\n'.format(ex_cls.__name__, ex)
+    import traceback
+    text += ''.join(traceback.format_tb(tb))
+
+    print(text)
+    QtWidgets.QMessageBox.critical(None, 'Error', text)
+    quit()
+
+
+def add_to_startup(file_path=""):
     if file_path == "":
-        file_name = __file__.rsplit('.', 1)[0] + '.exe'
-        file_path = f'"{os.path.dirname(os.path.realpath(__file__))}\{file_name}"'
-    user_name = getpass.getuser()
-    bat_path = r'C:\Users\%s\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup' % user_name
-    with open(bat_path + '\\' + f"{name_bat}.bat", 'w+') as bat_file:
-        bat_file.write(r'start "" %s' % file_path)
+        file_path = os.path.dirname(os.path.realpath(__file__)) + "\\" + __file__
+    print(file_path)
+    create_shortcut(file_path)
+    shutil.move(file_path.rsplit('.', 1)[0] + '.lnk', AUTORUN_PATH)
 
 
-def rm_from_startup(name_bat):
-    user_name = getpass.getuser()
-    bat_path = r'C:\Users\%s\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup' % user_name
-    bat_path = bat_path + '\\' + f"{name_bat}.bat"
-    if os.path.isfile(bat_path):
-        os.remove(bat_path)
+def rm_from_startup():
+    file_name = os.path.basename(__file__).rsplit('.', 1)[0] + '.lnk'
+    shortcut_path = f'{AUTORUN_PATH}\{file_name}'
+    if os.path.isfile(shortcut_path):
+        os.remove(shortcut_path)
 
 
 class MainWindow(QtWidgets.QMainWindow):
-    check_box = None
     tray_icon = None
+    minimize_to_tray = None
+    autorun = None
 
     # Переопределяем конструктор класса
     def __init__(self):
         # Обязательно нужно вызвать метод супер класса
         QtWidgets.QMainWindow.__init__(self)
 
-        self.setMinimumSize(QtCore.QSize(480, 80))  # Устанавливаем размеры
-        self.setWindowTitle("Sample")  # Устанавливаем заголовок окна
-        self.setWindowIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DesktopIcon))
-
-        central_widget = QtWidgets.QWidget(self)  # Создаём центральный виджет
-        self.setCentralWidget(central_widget)  # Устанавливаем центральный виджет
-
-        grid_layout = QtWidgets.QGridLayout(self)  # Создаём QGridLayout
-        central_widget.setLayout(grid_layout)  # Устанавливаем данное размещение в центральный виджет
-
-        # Добавляем чекбокс, от которого будет зависеть поведение программы при закрытии окна
-        self.check_box = QtWidgets.QCheckBox('Minimize to Tray')
-        grid_layout.addWidget(self.check_box, 0, 0)
-        grid_layout.addItem(
-            QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding), 2, 0)
-
+        self.init_ui()
         self.tray()
         self.menu()
 
+    def init_ui(self):
+        self.setMinimumSize(QtCore.QSize(480, 80))  # Устанавливаем размеры
+        self.setWindowTitle("Sample")  # Устанавливаем заголовок окна
+        self.setWindowIcon(QtGui.QIcon('scraper.ico'))
+
     def menu(self):
         setting_action = QtWidgets.QAction('Settings', self)
-        setting_action.triggered.connect(self.settings_show)
+        setting_action.triggered.connect(self.settings)
 
         menu_bar = self.menuBar()
         menu_bar.addAction(setting_action)
@@ -62,7 +82,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def tray(self):
         # Инициализируем QSystemTrayIcon
         self.tray_icon = QtWidgets.QSystemTrayIcon(self)
-        self.tray_icon.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DesktopIcon))
+        self.tray_icon.setIcon(QtGui.QIcon('scraper.ico'))
         self.tray_icon.setToolTip('MyApp')
 
         '''
@@ -85,24 +105,63 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.show()
 
-    def settings_show(self):
-        settings = QtWidgets.QWidget(self, QtCore.Qt.Window)
-        settings.setWindowModality(QtCore.Qt.WindowModal)
-        settings.setMinimumSize(QtCore.QSize(480, 80))  # Устанавливаем размеры
-        settings.setWindowTitle("Settings")
-        settings.show()
+    def settings(self):
+        setting_win = QtWidgets.QWidget(self, QtCore.Qt.Window)
 
-    # Переопределение метода closeEvent, для перехвата события закрытия окна
-    # Окно будет закрываться только в том случае, если нет галочки в чекбоксе
-    def closeEvent(self, event):
-        if not self.check_box.isChecked() or not self.isVisible():
-            self.tray_icon.hide()
+        setting_win.setWindowModality(QtCore.Qt.WindowModal)
+        setting_win.setMinimumSize(QtCore.QSize(450, 200))
+        setting_win.setWindowTitle("Settings")
+
+        self.minimize_to_tray = QtWidgets.QCheckBox('Minimizing to tray', setting_win)
+        self.minimize_to_tray.move(5, 5)
+
+        self.autorun = QtWidgets.QCheckBox('Run with Windows', setting_win)
+        self.autorun.move(5, 25)
+
+        settings = QtCore.QSettings()
+
+        check_state = settings.value(SETTING_MINIMIZE_TO_TRAY, False, type=bool)
+        self.minimize_to_tray.setChecked(check_state)
+        self.minimize_to_tray.clicked.connect(self.save_minimize_settings)
+
+        check_state = settings.value(SETTING_AUTORUN, False, type=bool)
+        self.autorun.setChecked(check_state)
+        self.autorun.clicked.connect(self.save_autorun_settings)
+
+        setting_win.show()
+
+    def save_minimize_settings(self):
+        settings = QtCore.QSettings()
+        settings.setValue(SETTING_MINIMIZE_TO_TRAY, self.minimize_to_tray.isChecked())
+        settings.sync()
+
+    def save_autorun_settings(self):
+        settings = QtCore.QSettings()
+        settings.setValue(SETTING_AUTORUN, self.autorun.isChecked())
+        check_state = settings.value(SETTING_AUTORUN, False, type=bool)
+        if check_state:
+            add_to_startup()
         else:
-            event.ignore()
+            rm_from_startup()
+        settings.sync()
+
+    def hideEvent(self, event):
+        settings = QtCore.QSettings()
+        check_state = settings.value(SETTING_MINIMIZE_TO_TRAY, False, type=bool)
+        if check_state:
             self.hide()
+
+    def closeEvent(self, event):
+        self.tray_icon.hide()
 
 
 if __name__ == "__main__":
+    sys.excepthook = log_uncaught_exceptions
+
+    QtCore.QCoreApplication.setApplicationName(ORGANIZATION_NAME)
+    QtCore.QCoreApplication.setOrganizationDomain(ORGANIZATION_DOMAIN)
+    QtCore.QCoreApplication.setApplicationName(APPLICATION_NAME)
+
     app = QtWidgets.QApplication(sys.argv)
     mw = MainWindow()
     mw.show()
