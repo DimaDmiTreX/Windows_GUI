@@ -10,6 +10,8 @@ from PyQt5 import QtGui
 
 user_name = getpass.getuser()
 AUTORUN_PATH = r'C:\Users\%s\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup' % user_name
+FILE_NAME = os.path.basename(sys.argv[0])
+ICON_NAME = 'scraper.ico'
 
 ORGANIZATION_NAME = 'Example App'
 ORGANIZATION_DOMAIN = 'example.com'
@@ -18,39 +20,35 @@ SETTING_MINIMIZE_TO_TRAY = 'settings/minimize'
 SETTING_AUTORUN = 'settings/autorun'
 
 
+def log_uncaught_exceptions(ex_cls, ex, tb):
+    text = '{}: {}:\n'.format(ex_cls.__name__, ex)
+    import traceback
+    text += ''.join(traceback.format_tb(tb))
+
+    QtWidgets.QMessageBox.critical(None, 'Error', text)
+    quit()
+
+
+def add_to_startup():
+    file_path = os.path.dirname(os.path.realpath(__file__)) + "\\" + FILE_NAME
+    create_shortcut(file_path)
+    shutil.move(file_path.rsplit('.', 1)[0] + '.lnk', AUTORUN_PATH)
+
+
+def rm_from_startup():
+    shortcut_path = f"{AUTORUN_PATH}\{FILE_NAME.rsplit('.', 1)[0] + '.lnk'}"
+    if os.path.isfile(shortcut_path):
+        os.remove(shortcut_path)
+
+
 def create_shortcut(path):
-    path_to_target = path.rsplit('.', 1)[0] + '.exe'
+    path_to_target = path
     path_to_shortcut = path.rsplit('.', 1)[0] + '.lnk'
     shell = Dispatch("WScript.Shell")
     shortcut = shell.CreateShortCut(path_to_shortcut)
     shortcut.Targetpath = path_to_target
     shortcut.WorkingDirectory = path.rsplit('\\', 1)[0]
     shortcut.save()
-
-
-def log_uncaught_exceptions(ex_cls, ex, tb):
-    text = '{}: {}:\n'.format(ex_cls.__name__, ex)
-    import traceback
-    text += ''.join(traceback.format_tb(tb))
-
-    print(text)
-    QtWidgets.QMessageBox.critical(None, 'Error', text)
-    quit()
-
-
-def add_to_startup(file_path=""):
-    if file_path == "":
-        file_path = os.path.dirname(os.path.realpath(__file__)) + "\\" + __file__
-    print(file_path)
-    create_shortcut(file_path)
-    shutil.move(file_path.rsplit('.', 1)[0] + '.lnk', AUTORUN_PATH)
-
-
-def rm_from_startup():
-    file_name = os.path.basename(__file__).rsplit('.', 1)[0] + '.lnk'
-    shortcut_path = f'{AUTORUN_PATH}\{file_name}'
-    if os.path.isfile(shortcut_path):
-        os.remove(shortcut_path)
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -70,7 +68,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def init_ui(self):
         self.setMinimumSize(QtCore.QSize(480, 80))  # Устанавливаем размеры
         self.setWindowTitle("Sample")  # Устанавливаем заголовок окна
-        self.setWindowIcon(QtGui.QIcon('scraper.ico'))
+        self.setWindowIcon(QtGui.QIcon(ICON_FILE))
 
     def menu(self):
         setting_action = QtWidgets.QAction('Settings', self)
@@ -80,17 +78,10 @@ class MainWindow(QtWidgets.QMainWindow):
         menu_bar.addAction(setting_action)
 
     def tray(self):
-        # Инициализируем QSystemTrayIcon
         self.tray_icon = QtWidgets.QSystemTrayIcon(self)
-        self.tray_icon.setIcon(QtGui.QIcon('scraper.ico'))
+        self.tray_icon.setIcon(QtGui.QIcon(ICON_FILE))
         self.tray_icon.setToolTip('MyApp')
 
-        '''
-            Объявим и добавим действия для работы с иконкой системного трея
-            show - показать окно
-            hide - скрыть окно
-            exit - выход из программы
-        '''
         show_action = QtWidgets.QAction("Show", self)
         hide_action = QtWidgets.QAction("Hide", self)
         quit_action = QtWidgets.QAction("Exit", self)
@@ -156,6 +147,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
 if __name__ == "__main__":
+    try:
+        ico_path = sys._MEIPASS
+    except AttributeError:
+        ico_path = '.'
+    ICON_FILE = os.path.join(ico_path, ICON_NAME)
+
     sys.excepthook = log_uncaught_exceptions
 
     QtCore.QCoreApplication.setApplicationName(ORGANIZATION_NAME)
