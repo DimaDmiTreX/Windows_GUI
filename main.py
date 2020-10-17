@@ -8,10 +8,14 @@ from PyQt5 import QtWidgets
 from PyQt5 import QtCore
 from PyQt5 import QtGui
 
+# Getting the username and creating the path to the startup folder
 user_name = getpass.getuser()
 AUTORUN_PATH = r'C:\Users\%s\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup' % user_name
-FILE_NAME = os.path.basename(sys.argv[0])
-ICON_NAME = 'scraper.ico'
+
+FILE_NAME = os.path.basename(sys.argv[0])  # Current file name
+ICON_NAME = 'scraper.ico'  # Application icon file name
+
+DEBUG_MOD = True  # Displaying program errors
 
 ORGANIZATION_NAME = 'Example App'
 ORGANIZATION_DOMAIN = 'example.com'
@@ -20,45 +24,72 @@ SETTING_MINIMIZE_TO_TRAY = 'settings/minimize'
 SETTING_AUTORUN = 'settings/autorun'
 
 
-def log_uncaught_exceptions(ex_cls, ex, tb):
-    text = '{}: {}:\n'.format(ex_cls.__name__, ex)
-    import traceback
-    text += ''.join(traceback.format_tb(tb))
-
-    QtWidgets.QMessageBox.critical(None, 'Error', text)
-    quit()
-
-
 def add_to_startup():
+    """Adds the program to autorun"""
     file_path = os.path.dirname(os.path.realpath(__file__)) + "\\" + FILE_NAME
     create_shortcut(file_path)
     shutil.move(file_path.rsplit('.', 1)[0] + '.lnk', AUTORUN_PATH)
 
 
 def rm_from_startup():
+    """Removes a program from autostart"""
     shortcut_path = f"{AUTORUN_PATH}\{FILE_NAME.rsplit('.', 1)[0] + '.lnk'}"
     if os.path.isfile(shortcut_path):
         os.remove(shortcut_path)
 
 
-def create_shortcut(path):
+def create_shortcut(path: str):
+    """Creates a shortcut to the program"""
     path_to_target = path
     path_to_shortcut = path.rsplit('.', 1)[0] + '.lnk'
+    path_to_work_dir = path.rsplit('\\', 1)[0]
+
+    # Creating a shortcut with the desired paths and saving it
     shell = Dispatch("WScript.Shell")
     shortcut = shell.CreateShortCut(path_to_shortcut)
     shortcut.Targetpath = path_to_target
-    shortcut.WorkingDirectory = path.rsplit('\\', 1)[0]
+    shortcut.WorkingDirectory = path_to_work_dir
     shortcut.save()
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    """Main window class
+
+        Attributes
+        ----------
+        tray_icon
+        minimize_to_tray
+            Checkbox for minimizing the program to tray
+        autorun
+            Checkbox for adding a program to autorun
+
+        Methods
+        -------
+        init_ui(self)
+            Sets the window interface
+        menu(self)
+            Creates a window menu
+        tray(self)
+            Creates a tray icon
+        settings(self)
+            Defines the interface and functionality of the settings window
+        save_minimize_settings(self)
+            Saves the checkbox value of minimizing the window to tray
+        save_autorun_settings(self)
+            Saves the value of the checkbox for adding a program to autorun
+        hideEvent(self, event)
+            Defines the behavior of the program when minimized
+        closeEvent(self, event)
+            Defines the behavior of the closing program
+        log_uncaught_exceptions(self, ex_cls, ex, tb)
+            Catches and prints errors
+        """
+
     tray_icon = None
     minimize_to_tray = None
     autorun = None
 
-    # Переопределяем конструктор класса
     def __init__(self):
-        # Обязательно нужно вызвать метод супер класса
         QtWidgets.QMainWindow.__init__(self)
 
         self.init_ui()
@@ -66,8 +97,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.menu()
 
     def init_ui(self):
-        self.setMinimumSize(QtCore.QSize(480, 80))  # Устанавливаем размеры
-        self.setWindowTitle("Sample")  # Устанавливаем заголовок окна
+        self.setMinimumSize(QtCore.QSize(480, 80))
+        self.setWindowTitle("Sample")
         self.setWindowIcon(QtGui.QIcon(ICON_FILE))
 
     def menu(self):
@@ -145,6 +176,14 @@ class MainWindow(QtWidgets.QMainWindow):
     def closeEvent(self, event):
         self.tray_icon.hide()
 
+    def log_uncaught_exceptions(self, ex_cls, ex, tb):
+        text = '{}: {}:\n'.format(ex_cls.__name__, ex)
+        import traceback
+        text += ''.join(traceback.format_tb(tb))
+
+        QtWidgets.QMessageBox.critical(self, 'Error', text)
+        quit()
+
 
 if __name__ == "__main__":
     try:
@@ -153,13 +192,13 @@ if __name__ == "__main__":
         ico_path = '.'
     ICON_FILE = os.path.join(ico_path, ICON_NAME)
 
-    sys.excepthook = log_uncaught_exceptions
-
     QtCore.QCoreApplication.setApplicationName(ORGANIZATION_NAME)
     QtCore.QCoreApplication.setOrganizationDomain(ORGANIZATION_DOMAIN)
     QtCore.QCoreApplication.setApplicationName(APPLICATION_NAME)
 
     app = QtWidgets.QApplication(sys.argv)
     mw = MainWindow()
+    if DEBUG_MOD:
+        sys.excepthook = mw.log_uncaught_exceptions
     mw.show()
     sys.exit(app.exec())
